@@ -440,6 +440,7 @@ containing a value of this type.
     }
     public static final class raw {
         public static int gtm_analytics=0x7f040000;
+        public static int sample=0x7f040001;
     }
     public static final class string {
         public static int accept=0x7f080000;

@@ -29,6 +29,8 @@ import com.google.android.gms.maps.MapView;
 import com.google.android.gms.maps.MapsInitializer;
 import com.google.android.gms.maps.model.TileOverlay;
 import com.google.android.gms.maps.model.TileOverlayOptions;
+import com.google.android.gms.maps.model.TileProvider;
+import com.google.android.gms.maps.model.UrlTileProvider;
 import com.google.maps.android.heatmaps.Gradient;
 import com.google.maps.android.heatmaps.HeatmapTileProvider;
 import com.google.android.gms.maps.OnMapReadyCallback;
@@ -43,11 +45,18 @@ import com.google.maps.android.heatmaps.WeightedLatLng;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.Cursor;
 
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.InputStream;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-
-
+import java.util.Locale;
+import java.util.Scanner;
 
 
 /**
@@ -61,6 +70,9 @@ public class MapFragment extends Fragment {
     private HeatmapTileProvider mProvider;
     private TileOverlay mOverlay;
     //private HashMap<String, DataSet> mLists = new HashMap<String, DataSet>();
+    /** This returns moon tiles. */
+    private static final String MOON_MAP_URL_FORMAT =
+            "http://mw1.google.com/mw-planetary/lunar/lunarmaps_v1/clem_bw/%d/%d/%d.jpg";
 
     public void refreshSpinners(Context c, Spinner networkTypeSpinner, Spinner carrierTypeSpinner, Spinner dateSpinner) {
         Log.d("refreshSpinner","Start");
@@ -176,6 +188,93 @@ public class MapFragment extends Fragment {
     }
 
 
+    private void setUpMapIfNeeded()
+    {
+        // Do a null check to confirm that we have not already instantiated the map.
+        if (googleMap == null) {
+            // Try to obtain the map from the SupportMapFragment.
+            googleMap = mMapView.getMap();
+            // Check if we were successful in obtaining the map.
+            if (googleMap != null)
+            {
+                // Position the camera
+                googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(-25, 135), 3));
+            }
+            else
+            {
+                Toast.makeText(mMapView.getContext(), "Problem with Google Map", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+    private ArrayList<LatLng> readItems(int resource) throws JSONException
+    {
+        ArrayList<LatLng> list = new ArrayList<LatLng>();
+        InputStream inputStream = getResources().openRawResource(resource);
+        @SuppressWarnings("resource")
+        String json = new Scanner(inputStream).useDelimiter("\\A").next();
+        JSONArray array = new JSONArray(json);
+        for (int i = 0; i < array.length(); i++) {
+            JSONObject object = array.getJSONObject(i);
+            double lat = object.getDouble("lat");
+            double lng = object.getDouble("lng");
+            list.add(new LatLng(lat, lng));
+        }
+
+        return list;
+
+    }
+
+    private void addSampleHeatMap(Context context)
+    {
+        List<LatLng> list = null;
+
+        // Get the data: latitude/longitude positions of police stations.
+        try
+        {
+            list = readItems(R.raw.sample);
+        } catch (JSONException e)
+        {
+            Toast.makeText(context, "Problem reading list of locations.", Toast.LENGTH_LONG).show();
+        }
+
+        int[] colors = {
+                Color.rgb(102, 225, 0), // green
+                Color.rgb(255, 0, 0)    // red
+        };
+
+        float[] startPoints = {
+                0.2f, 1f
+        };
+
+        Gradient gradient = new Gradient(colors, startPoints);
+
+        // Create a heat map tile provider, passing it the latlngs of the police stations.
+        HeatmapTileProvider provider = new HeatmapTileProvider.Builder()
+                .data(list)
+                .gradient(gradient)
+                .build();
+
+        /*TileProvider tileProvider = new UrlTileProvider(256, 256) {
+            @Override
+            public synchronized URL getTileUrl(int x, int y, int zoom) {
+                // The moon tile coordinate system is reversed.  This is not normal.
+                int reversedY = (1 << zoom) - y - 1;
+                String s = String.format(Locale.US, MOON_MAP_URL_FORMAT, zoom, x, reversedY);
+                URL url = null;
+                try {
+                    url = new URL(s);
+                } catch (MalformedURLException e) {
+                    throw new AssertionError(e);
+                }
+                return url;
+            }
+        };*/
+
+        // Add a tile overlay to the map, using the heat map tile provider.
+        googleMap.addTileOverlay(new TileOverlayOptions().tileProvider(provider));
+        Toast.makeText(context, "Tile Overlay of Map done..", Toast.LENGTH_SHORT).show();
+    }
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
@@ -186,6 +285,8 @@ public class MapFragment extends Fragment {
                 false);
         mMapView = (MapView) v.findViewById(R.id.mapView);
         mMapView.onCreate(savedInstanceState);
+
+        final Context context = v.getContext();
 
         mMapView.onResume();// needed to get the map to display immediately
 
@@ -281,6 +382,18 @@ public class MapFragment extends Fragment {
 
         //initializeHeapMap();
         // Perform any camera updates here
+
+        Button filterButton = (Button)v.findViewById(R.id.filterButton);
+        filterButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view)
+            {
+                Toast.makeText(context, "Rendering HeatMap..", Toast.LENGTH_SHORT).show();
+                setUpMapIfNeeded();
+                addSampleHeatMap(context);
+            }
+        });
+
         return v;
     }
 
